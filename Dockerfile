@@ -4,7 +4,7 @@ WORKDIR /home/user
 
 COPY setup.py requirements.txt readme.rst /home/user/
 RUN pip install -r requirements.txt
-RUN pip install -e .
+RUN pip install -e . 
 
 COPY farm /home/user/farm
 # optionally: copy some base models into the image to allow simple demos / comparisons

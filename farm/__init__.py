@@ -1,7 +1,6 @@
 import logging
 
 import torch.multiprocessing as mp
-from farm._version import __version__
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",

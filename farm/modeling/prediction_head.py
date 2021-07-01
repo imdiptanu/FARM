@@ -697,7 +697,7 @@ class TokenClassificationHead(PredictionHead):
         for preds_seq, probs_seq, sample, spans_seq in zip(
             preds, probs, samples, spans
         ):
-            tags, spans_seq, tag_probs = convert_iob_to_simple_tags(preds_seq, spans_seq, probs_seq)
+            tags, spans_seq, tag_probs = preds_seq, spans_seq, probs_seq # convert_iob_to_simple_tags(preds_seq, spans_seq, probs_seq)
             seq_res = []
             # TODO: Though we filter out tags and spans for non-entity words,
             # TODO: we do not yet filter out probs of non-entity words. This needs to be implemented still
@@ -1423,7 +1423,7 @@ class QuestionAnsweringHead(PredictionHead):
                                                         score=qa_candidate.score,
                                                         answer_type=qa_candidate.answer_type,
                                                         offset_unit="token",
-                                                        aggregation_level="document",
+                                                        aggregation_level="passage",
                                                         passage_id=str(sample_idx),
                                                         n_passages_in_doc=n_samples,
                                                         confidence=qa_candidate.confidence)
@@ -1619,14 +1619,9 @@ class TextSimilarityHead(PredictionHead):
         """
         Calculates dot product similarity scores for two 2-dimensional tensors
 
-        :param query_vectors: tensor of query embeddings from BiAdaptive model
-                        of dimension n1 x D,
-                        where n1 is the number of queries/batch size and D is embedding size
+        :param query_vectors: tensor of query embeddings from BiAdaptive model of dimension n1 x D, where n1 is the number of queries/batch size and D is embedding size
         :type query_vectors: torch.Tensor
-        :param passage_vectors: tensor of context/passage embeddings from BiAdaptive model
-                        of dimension n2 x D,
-                        where n2 is (batch_size * num_positives) + (batch_size * num_hard_negatives)
-                        and D is embedding size
+        :param passage_vectors: tensor of context/passage embeddings from BiAdaptive model of dimension n2 x D, where n2 is the number of queries/batch size and D is embedding size
         :type passage_vectors: torch.Tensor
 
         :return dot_product: similarity score of each query with each context/passage (dimension: n1xn2)
@@ -1646,20 +1641,13 @@ class TextSimilarityHead(PredictionHead):
         :type query_vectors: torch.Tensor
         :param passage_vectors: tensor of context/passage embeddings from BiAdaptive model
                           of dimension n2 x D,
-                          where n2 is (batch_size * num_positives) + (batch_size * num_hard_negatives)
-                          and D is embedding size
+                          where n2 is the number of queries/batch size and D is embedding size
         :type passage_vectors: torch.Tensor
 
         :return: cosine similarity score of each query with each context/passage (dimension: n1xn2)
         """
         # q_vector: n1 x D, ctx_vectors: n2 x D, result n1 x n2
-        cosine_similarities = []
-        passages_per_batch = passage_vectors.shape[0]
-        for query_vector in query_vectors:
-            query_vector_repeated = query_vector.repeat(passages_per_batch, 1)
-            current_cosine_similarities = nn.functional.cosine_similarity(query_vector_repeated, passage_vectors, dim=1)
-            cosine_similarities.append(current_cosine_similarities)
-        return torch.stack(cosine_similarities)
+        return nn.functional.cosine_similarity(query_vectors, passage_vectors, dim=1)
 
     def get_similarity_function(self):
         """
@@ -1709,7 +1697,7 @@ class TextSimilarityHead(PredictionHead):
         softmax_scores = nn.functional.log_softmax(scores, dim=1)
         return softmax_scores
 
-    def logits_to_loss(self, logits: Tuple[torch.Tensor, torch.Tensor], label_ids, **kwargs):
+    def logits_to_loss(self, logits: Tuple[torch.Tensor, torch.Tensor], **kwargs):
         """
         Computes the loss (Default: NLLLoss) by applying a similarity function (Default: dot product) to the input
         tuple of (query_vectors, passage_vectors) and afterwards applying the loss function on similarity scores.
@@ -1729,7 +1717,8 @@ class TextSimilarityHead(PredictionHead):
         query_vectors, passage_vectors = logits
 
         # Prepare Labels
-        positive_idx_per_question = torch.nonzero((label_ids.view(-1) == 1), as_tuple=False)
+        lm_label_ids = kwargs.get(self.label_tensor_name)
+        positive_idx_per_question = torch.nonzero((lm_label_ids.view(-1) == 1), as_tuple=False)
 
         # Gather global embeddings from all distributed nodes (DDP)
         if rank != -1:
@@ -1787,12 +1776,13 @@ class TextSimilarityHead(PredictionHead):
         _, sorted_scores = torch.sort(softmax_scores, dim=1, descending=True)
         return sorted_scores
 
-    def prepare_labels(self, label_ids, **kwargs):
+    def prepare_labels(self, **kwargs):
         """
         Returns a tensor with passage labels(0:hard_negative/1:positive) for each query
 
         :return: passage labels(0:hard_negative/1:positive) for each query
         """
+        label_ids = kwargs.get(self.label_tensor_name)
         labels = torch.zeros(label_ids.size(0), label_ids.numel())
         
         positive_indices = torch.nonzero(label_ids.view(-1) == 1, as_tuple=False)

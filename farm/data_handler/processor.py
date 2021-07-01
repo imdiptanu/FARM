@@ -570,7 +570,6 @@ class TextClassificationProcessor(Processor):
         self.skiprows = skiprows
         self.header = header
         self.max_samples = max_samples
-        logger.warning(f"Currently no support in Processor for returning problematic ids")
 
         super(TextClassificationProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -673,6 +672,7 @@ class TextClassificationProcessor(Processor):
 
         # TODO populate problematic ids
         problematic_ids = set()
+        logger.warning("Currently no support in Processor for returning problematic ids")
         dataset, tensornames = self._create_dataset()
         if return_baskets:
             return dataset, tensornames, problematic_ids, self.baskets
@@ -1007,6 +1007,7 @@ class InferenceProcessor(TextClassificationProcessor):
                 self._log_samples(1)
 
             problematic_ids = set()
+            logger.warning("Currently no support in InferenceProcessor for returning problematic ids")
             dataset, tensornames = self._create_dataset()
             ret = [dataset, tensornames, problematic_ids]
             if return_baskets:
@@ -1214,9 +1215,9 @@ class NERProcessor(Processor):
                     # This is expected during inference since there are no labels
                     # During training, this is a problem
                     label_ids = None
-                    logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
-                                   "\nIf your are running in *inference* mode: Don't worry!"
-                                   "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor and check that labels in input data are correct.")
+                    # logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
+                    #                "\nIf your are running in *inference* mode: Don't worry!"
+                    #                "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor and check that labels in input data are correct.")
 
                 if label_ids:
                     feature_dict[label_tensor_name] = label_ids
@@ -1860,10 +1861,10 @@ class SquadProcessor(Processor):
         self.ph_output_type = "per_token_squad"
 
         assert doc_stride < (max_seq_len - max_query_length), \
-            "doc_stride ({}) is longer than max_seq_len ({}) minus space reserved for query tokens ({}). \nThis means that there will be gaps " \
+            "doc_stride is longer than max_seq_len minus space reserved for query tokens. \nThis means that there will be gaps " \
             "as the passage windows slide, causing the model to skip over parts of the document.\n" \
             "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384)\n " \
-            "Or decrease max_query_length".format(doc_stride, max_seq_len, max_query_length)
+            "Or decrease max_query_length"
 
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
@@ -1940,10 +1941,10 @@ class SquadProcessor(Processor):
         """
         # check again for doc stride vs max_seq_len when. Parameters can be changed for already initialized models (e.g. in haystack)
         assert self.doc_stride < (self.max_seq_len - self.max_query_length), \
-            "doc_stride ({}) is longer than max_seq_len ({}) minus space reserved for query tokens ({}). \nThis means that there will be gaps " \
+            "doc_stride is longer than max_seq_len minus space reserved for query tokens. \nThis means that there will be gaps " \
             "as the passage windows slide, causing the model to skip over parts of the document.\n" \
             "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384)\n " \
-            "Or decrease max_query_length".format(self.doc_stride, self.max_seq_len, self.max_query_length)
+            "Or decrease max_query_length"
 
         try:
             # Check if infer_dict is already in internal json format
@@ -2867,9 +2868,6 @@ class TextSimilarityProcessor(Processor):
             ...]}
         """
         dicts = read_dpr_json(file, max_samples=self.max_samples, num_hard_negatives=self.num_hard_negatives, num_positives=self.num_positives, shuffle_negatives=self.shuffle_negatives, shuffle_positives=self.shuffle_positives)
-
-        # shuffle dicts to make sure that similar positive passages do not end up in one batch
-        dicts = random.sample(dicts, len(dicts))
         return dicts
 
     def dataset_from_dicts(self, dicts, indices=None, return_baskets = False):

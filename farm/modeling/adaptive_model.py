@@ -70,7 +70,7 @@ class BaseAdaptiveModel:
             all_preds.append(preds)
         return all_preds
 
-    def formatted_preds(self, logits, **kwargs):
+    def formatted_preds(self, logits, logits2, **kwargs):
         """
         Format predictions for inference.
 
@@ -106,6 +106,38 @@ class BaseAdaptiveModel:
                 preds_final += preds
             elif type(preds) == dict and "predictions" in preds:
                 preds_final.append(preds)
+
+        elif n_heads == 2:
+            preds_final = []
+            # This try catch is to deal with the fact that sometimes we collect preds before passing it to
+            # formatted_preds (see Inferencer._get_predictions_and_aggregate()) and sometimes we don't
+            # (see Inferencer._get_predictions())
+            try:
+                preds = kwargs["preds"]
+                temp = [y[0] for y in preds]
+                preds_flat = [item for sublist in temp for item in sublist]
+                kwargs["preds"] = preds_flat
+            except KeyError:
+                kwargs["preds"] = None
+            
+            head = self.prediction_heads[0]
+            logits_for_head = logits[0]
+            preds = head.formatted_preds(logits=logits_for_head, **kwargs)
+            # TODO This is very messy - we need better definition of what the output should look like
+            if type(preds) == list:
+                preds_final += preds
+            elif type(preds) == dict and "predictions" in preds:
+                preds_final.append(preds)
+
+            head = self.prediction_heads[1]
+            logits_for_head = logits2[0]
+            preds = head.formatted_preds(logits=logits_for_head, **kwargs)
+            # TODO This is very messy - we need better definition of what the output should look like
+            if type(preds) == list:
+                preds_final += preds
+            elif type(preds) == dict and "predictions" in preds:
+                preds_final.append(preds)
+
 
         # This case is triggered by Natural Questions
         else:
@@ -580,7 +612,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             model=model_name,
             output=output_path/"model.onnx",
             opset=opset_version,
-            use_external_format=True if language_model_class == "XLMRoberta" else False
+            use_external_format=True if language_model_class is "XLMRoberta" else False
         )
 
         # save processor & model config files that are needed when loading the model with the FARM Inferencer
